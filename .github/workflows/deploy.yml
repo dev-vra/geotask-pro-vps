@@ -69,6 +69,12 @@ jobs:
             # Restart services
             docker-compose up -d
             
+            # Run Migrations and Seed
+            echo "Running database migrations..."
+            docker exec geotask-app npx prisma migrate deploy
+            echo "Running database seed..."
+            docker exec geotask-app npx prisma db seed
+            
             # Setup Cron Jobs (Backups and DuckDNS)
             chmod +x scripts/backup.sh scripts/duckdns.sh
             (crontab -l 2>/dev/null; echo "0 3 * * * /home/geotask-pro/scripts/backup.sh") | crontab -

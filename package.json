@@ -64,6 +64,6 @@
     "vitest": "^4.0.18"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed_safe_production.ts"
+    "seed": "ts-node prisma/seed_vps.ts"
   }
 }
