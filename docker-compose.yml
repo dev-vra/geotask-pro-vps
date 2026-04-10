@@ -29,7 +29,7 @@ services:
       - "9001:9001"
 
   app:
-    image: ghcr.io/dev-vra/geotask-pro-vps:latest
+    image: ghcr.io/dev-vra/geotask-pro-vps:main
     container_name: geotask-app
     restart: always
     environment:

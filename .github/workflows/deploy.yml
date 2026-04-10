@@ -78,10 +78,10 @@ jobs:
             chmod +x scripts/backup.sh scripts/duckdns.sh
             
             # Pull new images
-            docker-compose pull
+            docker compose pull
             
             # Restart services
-            docker-compose up -d
+            docker compose up -d
             
             # Run Migrations and Seed
             echo "Running database migrations..."
