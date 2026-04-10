@@ -18,11 +18,13 @@
 
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient({
-  datasources: {
-    db: { url: process.env.DATABASE_URL || process.env.DIRECT_URL },
-  },
-});
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const connectionString = `${process.env.DATABASE_URL}`;
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 // ─────────── Helpers ───────────
 const fmtSec = (s: number): string => {
