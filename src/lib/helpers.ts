@@ -57,7 +57,7 @@ export const parseDate = (str: string | null | undefined): Date | null => {
   return new Date(`${y}-${m}-${d}`);
 };
 
-export const parseDateStr = (s?: string): Date | undefined => {
+export const parseDateStr = (s?: string | null): Date | undefined => {
   if (!s) return undefined;
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d;
