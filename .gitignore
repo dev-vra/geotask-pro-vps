@@ -1,0 +1,75 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# env files (NEVER commit secrets)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+/prisma/*.db
+/prisma/*.db-journal
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# compiled output
+/dist-seed
+
+# Claude Code
+.claude/
+
+# Projetos separados (não fazem parte deste repo)
+/geotask-pro-v2/
+/bonini_erp/
+
+# uploads (user content, not source code)
+/public/uploads/
+
+# temporary/debug files
+*.txt
+!.env.example
+data/
+
+# documents (keep in separate storage, not in repo)
+*.docx
+*.xlsx
+# Allow documentation in docs/ folder
+!docs/*.docx
