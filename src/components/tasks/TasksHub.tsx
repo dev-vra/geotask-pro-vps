@@ -155,7 +155,7 @@ export default function TasksHub({
             dateFrom={dateFrom}
             setDateFrom={setDateFrom}
             dateTo={dateTo}
-            setDateTo={setDateTo} setActiveTab={setActiveTab}
+            setDateTo={setDateTo}
             users={users}
             contracts={contracts}
             sectors={sectors}
@@ -215,7 +215,7 @@ export default function TasksHub({
               setContract={setContract}
               setCity={setCity}
               setDateFrom={setDateFrom}
-              setDateTo={setDateTo} setActiveTab={setActiveTab}
+              setDateTo={setDateTo}
             />
           )}
           {activeTab === "list" && (
@@ -250,7 +250,7 @@ export default function TasksHub({
               setCity={setCity}
               setNeighbor={setNeighbor}
               setDateFrom={setDateFrom}
-              setDateTo={setDateTo} setActiveTab={setActiveTab}
+              setDateTo={setDateTo}
             />
           )}
           {activeTab === "cronograma" && (
@@ -283,7 +283,7 @@ export default function TasksHub({
               setCity={setCity}
               setNeighbor={setNeighbor}
               setDateFrom={setDateFrom}
-              setDateTo={setDateTo} setActiveTab={setActiveTab}
+              setDateTo={setDateTo}
             />
           )}
           {activeTab === "mindmap" && (

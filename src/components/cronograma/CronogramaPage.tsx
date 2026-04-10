@@ -113,7 +113,6 @@ interface CronogramaPageProps {
   setNeighbor?: (v: string) => void;
   setDateFrom?: (v: DateRange | undefined) => void;
   setDateTo?: (v: DateRange | undefined) => void;
-  setActiveTab?: (tab: string) => void;
 }
 
 // ── Main Page ───────────────────────────────────────────────────
@@ -146,7 +145,6 @@ export default function CronogramaPage({
   setDateTo: setDateToProp,
   externalFilters = false,
   externalQuery,
-  setActiveTab
 }: CronogramaPageProps) {
   // ── States ─────────────────────────────────────────────────────
   const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
