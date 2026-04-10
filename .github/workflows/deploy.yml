@@ -1,0 +1,77 @@
+name: Deploy GeoTask-Pro to VPS
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: actions/login-server@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/geotask-pro
+            
+            # Create environment file from secrets
+            cat <<EOF > .env
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
+            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+            EOF
+            
+            # Pull new images
+            docker-compose pull
+            
+            # Restart services
+            docker-compose up -d
+            
+            # Setup Cron Jobs (Backups and DuckDNS)
+            chmod +x scripts/backup.sh scripts/duckdns.sh
+            (crontab -l 2>/dev/null; echo "0 3 * * * /home/geotask-pro/scripts/backup.sh") | crontab -
+            (crontab -l 2>/dev/null; echo "*/5 * * * * /home/geotask-pro/scripts/duckdns.sh") | crontab -
+            
+            echo "Deployment successful!"
