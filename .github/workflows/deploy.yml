@@ -78,6 +78,18 @@ jobs:
             MINIO_ROOT_USER=admin
             EOF
             
+            # Ensure directories exist
+            mkdir -p nginx/certs
+            
+            # Generate dummy certificates if not exist
+            if [ ! -f nginx/certs/fullchain.pem ]; then
+              echo "Generating dummy SSL certificates..."
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout nginx/certs/privkey.pem \
+                -out nginx/certs/fullchain.pem \
+                -subj "/C=BR/ST=SP/L=SaoPaulo/O=GeoTask/OU=Dev/CN=geotask.duckdns.org"
+            fi
+            
             # Fix permissions
             chmod +x scripts/backup.sh scripts/duckdns.sh
             
@@ -86,6 +98,10 @@ jobs:
             
             # Restart services
             docker compose up -d
+            
+            # Wait for database to be ready
+            echo "Waiting for database to start..."
+            sleep 10
             
             # Run Migrations and Seed
             echo "Running database migrations..."
@@ -97,4 +113,5 @@ jobs:
             (crontab -l 2>/dev/null | grep -v "geotask-pro"; echo "0 3 * * * /home/geotask-pro/scripts/backup.sh") | crontab -
             (crontab -l 2>/dev/null | grep -v "geotask-pro"; echo "*/5 * * * * /home/geotask-pro/scripts/duckdns.sh") | crontab -
             
+            docker logout ghcr.io
             echo "Deployment successful!"
