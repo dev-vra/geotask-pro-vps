@@ -43,7 +43,10 @@
     "tailwindcss-animate": "^1.0.7",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -57,9 +60,7 @@
     "docx": "^9.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "prisma": "^5.22.0",
     "tailwindcss": "^4.2.1",
-    "ts-node": "^10.9.2",
     "typescript": "^5",
     "vitest": "^4.0.18"
   },
