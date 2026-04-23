@@ -28,17 +28,53 @@ function getBackend(): StorageBackend {
   return "local";
 }
 
-/**
- * Dynamically load @aws-sdk/client-s3 at runtime.
- * Uses eval to prevent Next.js/Turbopack from resolving the module at build time.
- * This module is only needed when AWS_S3_BUCKET is configured.
- * Install it before deploying to AWS: npm install @aws-sdk/client-s3
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function loadS3SDK(): any {
-  // eval hides the require from the bundler's static analysis
-  // eslint-disable-next-line no-eval
-  return eval('require')("@aws-sdk/client-s3");
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
+} from "@aws-sdk/client-s3";
+
+// ---------------------------------------------------------------------------
+// S3/MinIO — helpers
+// ---------------------------------------------------------------------------
+
+function createS3Client(): S3Client {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s3Config: any = {
+    region: process.env.AWS_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  };
+
+  if (process.env.AWS_S3_ENDPOINT) {
+    s3Config.endpoint = process.env.AWS_S3_ENDPOINT;
+    s3Config.forcePathStyle = true; // Required for MinIO
+  }
+
+  return new S3Client(s3Config);
+}
+
+/** Ensures the S3/MinIO bucket exists; creates it if missing. */
+let bucketVerified = false;
+async function ensureBucket(client: S3Client, bucket: string): Promise<void> {
+  if (bucketVerified) return;
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }));
+    bucketVerified = true;
+  } catch (err: any) {
+    if (err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404 || err?.name === "NoSuchBucket") {
+      console.log(`[Storage] Bucket "${bucket}" not found — creating it...`);
+      await client.send(new CreateBucketCommand({ Bucket: bucket }));
+      bucketVerified = true;
+      console.log(`[Storage] Bucket "${bucket}" created successfully.`);
+    } else {
+      throw err;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,24 +114,11 @@ async function uploadSupabase(buffer: Buffer, taskId: number, filename: string):
 }
 
 async function uploadS3(buffer: Buffer, taskId: number, filename: string, mimeType: string): Promise<UploadResult> {
-  const { S3Client, PutObjectCommand } = loadS3SDK();
-
-  const s3Config: any = { 
-    region: process.env.AWS_REGION!,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    }
-  };
-
-  if (process.env.AWS_S3_ENDPOINT) {
-    s3Config.endpoint = process.env.AWS_S3_ENDPOINT;
-    s3Config.forcePathStyle = true; // Required for MinIO
-  }
-
-  const client = new S3Client(s3Config);
+  const client = createS3Client();
   const bucket = process.env.AWS_S3_BUCKET!;
   const key = `uploads/tasks/${taskId}/${filename}`;
+
+  await ensureBucket(client, bucket);
 
   await client.send(new PutObjectCommand({
     Bucket: bucket,
@@ -158,22 +181,7 @@ async function deleteSupabase(fileUrl: string): Promise<void> {
 }
 
 async function deleteS3(fileUrl: string): Promise<void> {
-  const { S3Client, DeleteObjectCommand } = loadS3SDK();
-
-  const s3Config: any = { 
-    region: process.env.AWS_REGION!,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    }
-  };
-
-  if (process.env.AWS_S3_ENDPOINT) {
-    s3Config.endpoint = process.env.AWS_S3_ENDPOINT;
-    s3Config.forcePathStyle = true;
-  }
-
-  const client = new S3Client(s3Config);
+  const client = createS3Client();
   const bucket = process.env.AWS_S3_BUCKET!;
 
   // Extract key from URL
@@ -182,6 +190,11 @@ async function deleteS3(fileUrl: string): Promise<void> {
     key = fileUrl.split(".amazonaws.com/")[1];
   } else if (fileUrl.includes(process.env.AWS_CLOUDFRONT_DOMAIN || "__none__")) {
     key = new URL(fileUrl).pathname.slice(1);
+  } else if (process.env.AWS_S3_ENDPOINT && fileUrl.startsWith(process.env.AWS_S3_ENDPOINT)) {
+    // MinIO: URL format is {endpoint}/{bucket}/{key}
+    const afterEndpoint = fileUrl.slice(process.env.AWS_S3_ENDPOINT.length + 1); // remove endpoint + "/"
+    const slashIdx = afterEndpoint.indexOf("/");
+    key = slashIdx >= 0 ? afterEndpoint.slice(slashIdx + 1) : afterEndpoint;
   }
 
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));

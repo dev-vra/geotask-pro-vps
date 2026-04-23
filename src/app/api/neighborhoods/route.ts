@@ -1,8 +1,13 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
 
 export async function GET(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const cityId = new URL(req.url).searchParams.get("cityId");
     const where = cityId ? { city_id: Number(cityId) } : {};
     const neighborhoods = await prisma.neighborhood.findMany({
@@ -23,6 +28,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { name, cityId } = await req.json();
     if (!name || !cityId)
       return NextResponse.json(
@@ -51,6 +59,9 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations);
+    if (authResult instanceof NextResponse) return authResult;
+
     const id = new URL(req.url).searchParams.get("id");
     if (!id)
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
@@ -66,6 +77,9 @@ export async function DELETE(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { id, name } = await req.json();
     if (!id || !name) {
       return NextResponse.json(
@@ -91,3 +105,4 @@ export async function PUT(req: Request) {
     );
   }
 }
+

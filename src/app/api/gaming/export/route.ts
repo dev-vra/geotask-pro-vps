@@ -5,25 +5,17 @@ import {
   canManageAllGamings,
   getSubordinatesRecursiveIds,
 } from "@/lib/gaming/hierarchy";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const { searchParams } = new URL(req.url);
     const gamingId = searchParams.get("gamingId");
     const exportType = searchParams.get("type") || "xlsx";
-    // Podem vir filtros de query (userId, cycle) para relatórios em lote, mas vamos focar em individual primeiro ou todos que ele tem acesso.
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const manageAll = canManageAllGamings(currentUser as any);
     let allowedUserIds: number[] = [];

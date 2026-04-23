@@ -3,6 +3,7 @@ import { logActivity } from "@/lib/activityLog";
 import prisma from "@/lib/prisma";
 import { getPermissions } from "@/lib/permissions";
 import { changePasswordSchema } from "@/lib/validators/auth";
+import { logger } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
@@ -86,11 +87,24 @@ export async function POST(req: Request) {
       "user",
       userId,
       isOwnPassword ? "Alterou a própria senha" : `Alterou a senha de ${targetUser.name}`,
+      req,
     );
+
+    if (isMustChange) {
+      logActivity(
+        userId,
+        targetUser.name,
+        "consent_accepted",
+        "user",
+        userId,
+        "Aceitou os termos de uso e política de privacidade no primeiro acesso",
+        req,
+      );
+    }
 
     return NextResponse.json({ message: "Senha alterada com sucesso" });
   } catch (error) {
-    console.error("Erro ao alterar senha:", error);
+    logger.error("Erro ao alterar senha", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro interno ao alterar senha" },
       { status: 500 },

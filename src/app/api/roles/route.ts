@@ -1,9 +1,15 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
 
 // GET /api/roles
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Requires general authentication
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const roles = await prisma.role.findMany({
       orderBy: { name: "asc" },
     });
@@ -22,6 +28,9 @@ export async function GET() {
 // POST /api/roles — criar cargo
 export async function POST(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_roles);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { name } = await req.json();
     if (!name) {
       return NextResponse.json(
@@ -48,6 +57,9 @@ export async function POST(req: Request) {
 // PATCH /api/roles — editar cargo (nome ou permissões)
 export async function PATCH(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_roles);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { id, name, permissions } = await req.json();
     if (!id) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
@@ -80,6 +92,9 @@ export async function PATCH(req: Request) {
 // DELETE /api/roles?id=X
 export async function DELETE(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_roles);
+    if (authResult instanceof NextResponse) return authResult;
+
     const id = new URL(req.url).searchParams.get("id");
     if (!id) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });

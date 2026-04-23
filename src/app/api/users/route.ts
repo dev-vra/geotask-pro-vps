@@ -3,12 +3,19 @@ import prisma from "@/lib/prisma";
 import { createUserSchema, updateUserSchema } from "@/lib/validators/user";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
+import { logger } from "@/lib/logger";
+import { sanitizeObject } from "@/lib/sanitize";
 
 const DEFAULT_PASSWORD = process.env.DEFAULT_USER_PASSWORD || "Mudar@123";
 
 // GET /api/users
 export async function GET(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
@@ -55,7 +62,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(transformed);
   } catch (error) {
-    console.error("Erro ao buscar usuários:", error);
+    logger.error("Erro ao buscar usuários", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao buscar usuários" },
       { status: 500 },
@@ -66,7 +73,11 @@ export async function GET(req: Request) {
 // POST /api/users
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const authResult = await requirePermission(req, (p) => p.settings.manage_users);
+    if (authResult instanceof NextResponse) return authResult;
+
+    let body = await req.json();
+    body = sanitizeObject(body);
     const parsed = createUserSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -109,6 +120,16 @@ export async function POST(req: Request) {
       include: { Role: true, Sector: true, Team: true },
     });
 
+    logActivity(
+      (authResult as any).user.id,
+      (authResult as any).user.name,
+      "user_created",
+      "user",
+      user.id,
+      `Criou o usuário "${user.name}" (${user.email})`,
+      req,
+    );
+
     return NextResponse.json(
       {
         ...user,
@@ -120,7 +141,7 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Erro ao criar usuário:", error);
+    logger.error("Erro ao criar usuário", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao criar usuário" },
       { status: 500 },
@@ -131,7 +152,11 @@ export async function POST(req: Request) {
 // PATCH /api/users
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
+    const authResult = await requirePermission(req, (p) => p.settings.manage_users);
+    if (authResult instanceof NextResponse) return authResult;
+
+    let body = await req.json();
+    body = sanitizeObject(body);
     const parsed = updateUserSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -175,6 +200,16 @@ export async function PATCH(req: Request) {
       include: { Role: true, Sector: true, Team: true, user_sectors: { include: { sector: true } } },
     });
 
+    logActivity(
+      (authResult as any).user.id,
+      (authResult as any).user.name,
+      "user_updated",
+      "user",
+      user.id,
+      `Atualizou o usuário "${user.name}"`,
+      req,
+    );
+
     return NextResponse.json({
       ...user,
       password_hash: undefined,
@@ -184,7 +219,7 @@ export async function PATCH(req: Request) {
       user_sectors: user.user_sectors,
     });
   } catch (error) {
-    console.error("Erro ao atualizar usuário:", error);
+    logger.error("Erro ao atualizar usuário", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao atualizar usuário" },
       { status: 500 },
@@ -195,11 +230,25 @@ export async function PATCH(req: Request) {
 // DELETE /api/users — soft or permanent delete
 export async function DELETE(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_users);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    const adminId = searchParams.get("admin_id");
-    const password = searchParams.get("password");
     const permanent = searchParams.get("permanent") === "true";
+
+    let password = null;
+    let adminIdStr = null;
+
+    if (permanent) {
+      try {
+        const body = await req.json();
+        password = body.password;
+        adminIdStr = body.admin_id;
+      } catch {
+        // Fallback or ignore if no body is provided
+      }
+    }
 
     if (!id)
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
@@ -207,13 +256,13 @@ export async function DELETE(req: Request) {
     const targetUserId = Number(id);
 
     if (permanent) {
-      if (!adminId || !password) {
+      if (!adminIdStr || !password) {
         return NextResponse.json({ error: "Permissão e senha são obrigatórias para exclusão definitiva." }, { status: 401 });
       }
 
       // Verify Admin
       const adminUser = await prisma.user.findUnique({
-        where: { id: Number(adminId) },
+        where: { id: Number(adminIdStr) },
         include: { Role: true },
       });
 
@@ -242,25 +291,37 @@ export async function DELETE(req: Request) {
       await prisma.user.delete({ where: { id: targetUserId } });
 
       logActivity(
-        Number(adminId),
+        Number(adminIdStr),
         adminUser.name,
         "user_deleted_permanent",
         "user",
         targetUserId,
         `Excluiu definitivamente o usuário "${userToDelete.name}"`,
+        req,
       );
 
       return NextResponse.json({ message: "Usuário removido definitivamente" });
     } else {
       // Soft Delete (Existing logic)
-      await prisma.user.update({
+      const deactivatedUser = await prisma.user.update({
         where: { id: targetUserId },
         data: { active: false },
+        select: { name: true },
       });
+
+      logActivity(
+        (authResult as any).user.id,
+        (authResult as any).user.name,
+        "user_deactivated",
+        "user",
+        targetUserId,
+        `Desativou o usuário "${deactivatedUser.name}"`,
+        req,
+      );
       return NextResponse.json({ message: "Usuário desativado" });
     }
   } catch (error) {
-    console.error("Erro ao deletar usuário:", error);
+    logger.error("Erro ao deletar usuário", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao processar exclusão" },
       { status: 500 },

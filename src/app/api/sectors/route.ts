@@ -1,9 +1,14 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
 
 // GET /api/sectors
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const sectors = await prisma.sector.findMany({
       orderBy: { name: "asc" },
     });
@@ -22,6 +27,9 @@ export async function GET() {
 // POST /api/sectors — criar setor
 export async function POST(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations || p.settings.manage_user_sectors);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { name } = await req.json();
     if (!name) {
       return NextResponse.json(
@@ -48,6 +56,9 @@ export async function POST(req: Request) {
 // PATCH /api/sectors — editar setor
 export async function PATCH(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations || p.settings.manage_user_sectors);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { id, name } = await req.json();
     if (!id) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
@@ -75,6 +86,9 @@ export async function PATCH(req: Request) {
 // DELETE /api/sectors?id=X
 export async function DELETE(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_locations || p.settings.manage_user_sectors);
+    if (authResult instanceof NextResponse) return authResult;
+
     const id = new URL(req.url).searchParams.get("id");
     if (!id) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });

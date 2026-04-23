@@ -1,24 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 
 /**
- * Middleware de autenticacao.
+ * Middleware de autenticação via JWT (HttpOnly cookie).
  *
- * Rotas publicas: /login, /api/auth/login, /api/setup, assets estaticos.
- * Rotas de API protegidas requerem o header X-User-Id.
- *
- * Nota: A autenticacao atual usa localStorage no cliente.
- * O frontend envia X-User-Id em cada request. O middleware valida
- * presenca e formato. A validacao completa (usuario existe e esta ativo)
- * e feita por `requireAuth()` em cada route handler.
+ * Rotas públicas: /login, /api/auth/login, /api/auth/logout, /api/setup, assets estáticos.
+ * Rotas de API protegidas requerem cookie JWT válido.
+ * Rotas de páginas redirecionam para /login se não autenticado.
  */
 
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/api/setup"]);
+const COOKIE_NAME = "geotask_token";
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "CHANGE_ME_IN_PRODUCTION_jwt_secret_32chars!!"
+);
+
+const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/api/auth/logout", "/api/setup"]);
 
 const PUBLIC_API_PATHS = new Set([
   "/api/auth/login",
+  "/api/auth/logout",
   "/api/auth/me",
   "/api/auth/change-password",
   "/api/setup",
+  "/api/health",
 ]);
 
 const PUBLIC_PREFIXES = ["/_next", "/favicon", "/logo", "/icon"];
@@ -30,14 +34,29 @@ function isPublicPath(pathname: string): boolean {
   return false;
 }
 
-export function middleware(request: NextRequest) {
+async function verifyToken(token: string): Promise<{ userId: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (typeof payload.userId === "number") {
+      return { userId: payload.userId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
-  // Protected API routes — require X-User-Id header
+  // Get JWT from cookie
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+
+  // Protected API routes
   if (pathname.startsWith("/api/")) {
     // Allow public API paths
     if (PUBLIC_API_PATHS.has(pathname)) {
@@ -49,25 +68,49 @@ export function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Require X-User-Id header
-    let userId = request.headers.get("X-User-Id");
-
-    // Fallback for SSE: allow userId query param for /api/events
-    if (!userId && pathname === "/api/events") {
-      userId = request.nextUrl.searchParams.get("userId");
-    }
-
-    if (!userId || isNaN(Number(userId))) {
+    // Validate JWT
+    if (!token) {
       return NextResponse.json(
         { error: "Autenticação necessária" },
         { status: 401 },
       );
     }
 
-    return NextResponse.next();
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return NextResponse.json(
+        { error: "Token inválido ou expirado" },
+        { status: 401 },
+      );
+    }
+
+    // Attach userId to request headers for downstream use
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-auth-user-id", String(payload.userId));
+
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
 
-  // Page routes — client-side handles auth redirect
+  // Page routes — redirect to login if no valid token
+  if (!token) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const payload = await verifyToken(token);
+  if (!payload) {
+    const loginUrl = new URL("/login", request.url);
+    const response = NextResponse.redirect(loginUrl);
+    // Clear invalid cookie
+    response.headers.set(
+      "Set-Cookie",
+      `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+    );
+    return response;
+  }
+
   return NextResponse.next();
 }
 

@@ -303,6 +303,7 @@ model User {
   created_at                              DateTime          @default(now())
   active                                  Boolean           @default(true)
   must_change_password                    Boolean           @default(true)
+  accepted_terms_at                       DateTime?
   role_id                                 Int
   sector_id                               Int
   team_id                                 Int?

@@ -4,28 +4,19 @@ import {
   canManageAllGamings,
   getSubordinatesRecursiveIds,
 } from "@/lib/gaming/hierarchy";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const { searchParams } = new URL(req.url);
     const userIdQuery = searchParams.get("userId");
     const cycleQuery = searchParams.get("cycle");
     const statusQuery = searchParams.get("status");
     const sectorQuery = searchParams.get("sectorId");
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
 
     const manageAll = canManageAllGamings(currentUser as any);
     let allowedUserIds: number[] = [];
@@ -93,18 +84,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const body = await req.json();
     const { user_id, cycle_type, cycle_name, items } = body;

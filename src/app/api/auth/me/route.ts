@@ -1,14 +1,45 @@
 import prisma from "@/lib/prisma";
+import { getTokenFromRequest, verifyJWT } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
+/**
+ * POST /api/auth/me
+ * Validates the current JWT cookie and returns the user's full profile.
+ * Used by the frontend to check if the user is still authenticated
+ * and to refresh user data (e.g., after role/sector changes).
+ */
 export async function POST(req: Request) {
   try {
-    const { id } = await req.json();
-    if (!id)
-      return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
+    // Try JWT cookie first
+    const token = getTokenFromRequest(req);
+    let userId: number | null = null;
+
+    if (token) {
+      const payload = await verifyJWT(token);
+      if (payload?.userId) {
+        userId = payload.userId;
+      }
+    }
+
+    // Fallback: body { id } for backward compatibility during migration
+    if (!userId) {
+      try {
+        const body = await req.json();
+        if (body?.id) userId = Number(body.id);
+      } catch {
+        // No body or invalid JSON
+      }
+    }
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Autenticação necessária" },
+        { status: 401 },
+      );
+    }
 
     const user = await prisma.user.findUnique({
-      where: { id: Number(id) },
+      where: { id: userId },
       include: {
         Role: true,
         Sector: true,

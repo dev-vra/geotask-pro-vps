@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authResult = await requireAuth(req);
+  if (authResult instanceof NextResponse) return authResult;
+
   const teams = await prisma.team.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { users: true, tasks: true } } },
@@ -11,7 +16,10 @@ export async function GET() {
   return response;
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  const authResult = await requirePermission(req, p => p.settings.manage_teams);
+  if (authResult instanceof NextResponse) return authResult;
+
   const { name } = await req.json();
   if (!name?.trim()) {
     return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
@@ -20,7 +28,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(team, { status: 201 });
 }
 
-export async function PATCH(req: NextRequest) {
+export async function PATCH(req: Request) {
+  const authResult = await requirePermission(req, p => p.settings.manage_teams);
+  if (authResult instanceof NextResponse) return authResult;
+
   const { id, name } = await req.json();
   if (!id || !name?.trim()) {
     return NextResponse.json({ error: "ID e nome obrigatórios" }, { status: 400 });
@@ -32,7 +43,10 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json(team);
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: Request) {
+  const authResult = await requirePermission(req, p => p.settings.manage_teams);
+  if (authResult instanceof NextResponse) return authResult;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) {
@@ -48,3 +62,4 @@ export async function DELETE(req: NextRequest) {
   await prisma.team.delete({ where: { id: Number(id) } });
   return NextResponse.json({ ok: true });
 }
+

@@ -8,5 +8,8 @@ export const loginSchema = z.object({
 export const changePasswordSchema = z.object({
   userId: z.coerce.number().int().positive("userId inválido"),
   currentPassword: z.string().optional().nullable(),
-  newPassword: z.string().min(6, "A nova senha deve ter pelo menos 6 caracteres"),
+  newPassword: z.string()
+    .min(8, "A nova senha deve ter pelo menos 8 caracteres")
+    .regex(/[A-Z]/, "A senha deve conter pelo menos uma letra maiúscula")
+    .regex(/[0-9]/, "A senha deve conter pelo menos um número"),
 });
