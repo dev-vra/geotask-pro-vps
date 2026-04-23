@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/admin/recalculate-time
  *
- * Temporary endpoint to recalculate time_spent for all tasks
- * based on started_at, completed_at, and TaskPause records.
+ * Maintenance endpoint to recalculate time_spent for all tasks
+ * based on status history.
  *
- * Access: requires ?secret=RECALC2026 query param as simple protection.
- * Remove this file after running.
+ * Access: requires ?secret=... matching ADMIN_MAINTENANCE_SECRET
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const secret = searchParams.get("secret");
+  const expectedSecret = process.env.ADMIN_MAINTENANCE_SECRET;
 
-  if (secret !== "RECALC2026") {
+  if (!expectedSecret || secret !== expectedSecret) {
+    logger.security("Tentativa de acesso não autorizado a endpoint administrativo", {
+      endpoint: "/api/admin/recalculate-time",
+      provided_secret: secret ? "***" : "none"
+    }, req);
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
   }
 

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { User, Sector, Role } from "@/types";
+import { getPermissions } from "../permissions";
 
 /**
  * Verifica se um usuário possui a permissão de "bypass",
@@ -8,15 +9,9 @@ import { User, Sector, Role } from "@/types";
 export const canManageAllGamings = (
   user: User & { Role?: Role | null; Sector?: Sector | null },
 ): boolean => {
-  if (!user || !user.Role) return false;
-
-  const roleName = user.Role.name;
-  const sectorName = user.Sector?.name;
-
-  const isHighLevel = ["Admin", "Diretor", "Socio", "GM"].includes(roleName);
-  const isRH = sectorName === "RH" || sectorName === "Controladoria";
-
-  return isHighLevel || isRH;
+  if (!user) return false;
+  const perms = getPermissions(user as any);
+  return perms.pages.gaming && (perms.tasks.view_all_sectors || perms.settings.manage_users);
 };
 
 /**

@@ -172,13 +172,20 @@ export default function TaskDetailModal({
   const handleDeleteTask = async (password: string) => {
     setDeletingTask(true);
     try {
-      const res = await authFetch(`/api/tasks?id=${t.id}&admin_id=${user.id}&password=${encodeURIComponent(password)}`, {
+      const res = await authFetch(`/api/tasks`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: t.id,
+          admin_id: user.id,
+          password: password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || "Erro ao excluir tarefa. Verifique sua senha.");
       } else {
+
         setShowDeleteModal(false);
         onClose();
         if (onUpdate) await onUpdate(t.id, "refresh", {});

@@ -4,6 +4,7 @@ import {
   canManageAllGamings,
   getSubordinatesRecursiveIds,
 } from "@/lib/gaming/hierarchy";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(
   req: Request,
@@ -11,19 +12,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const gamingId = parseInt(id);
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const gaming = await prisma.gaming.findUnique({
       where: { id: gamingId },
@@ -63,18 +56,11 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const gamingId = parseInt(id);
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const gaming = await prisma.gaming.findUnique({
       where: { id: gamingId },
@@ -97,7 +83,6 @@ export async function PUT(
     }
 
     // Only managers or above can edit OTHER's metrics, but if they are the user_id, typically they might not be allowed to edit their own targets?
-    // Often "Liderados" cannot edit their own gaming results, they only view it. Let's strictly enforce that a user CANNOT edit their own gaming unless they have manageAll (like admin tweaking their own) OR they are evaluating someone else. Actually, usually we allow self-evaluation in some models. But user said: "Assim o liderado pode analisar seu desempenho ... gestor pode ver sua gaming, ajustar...". 
     if (!manageAll && gaming.user_id === currentUser.id) {
         return NextResponse.json({ error: "Liderados não podem alterar sua própria Gaming." }, { status: 403 });
     }

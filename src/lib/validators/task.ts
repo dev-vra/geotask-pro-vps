@@ -29,7 +29,32 @@ export const createTaskSchema = z.object({
 
 export const updateTaskSchema = z.object({
   id: z.coerce.number().int().positive("ID é obrigatório"),
-}).passthrough();
+  action: z.enum(["update_status", "update_fields", "manage_pauses", "toggle_subtask", "reset_status"]).optional(),
+  user_id: z.coerce.number().int().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  type: z.string().optional(),
+  status: z.string().optional(),
+  priority: z.string().optional(),
+  sector_id: z.coerce.number().int().optional().nullable(),
+  sector: z.string().optional(),
+  responsible_id: z.coerce.number().int().optional().nullable(),
+  responsible: z.string().optional(),
+  contract_id: z.coerce.number().int().optional().nullable(),
+  contract: z.string().optional(),
+  city_id: z.coerce.number().int().optional().nullable(),
+  city: z.string().optional(),
+  nucleus: z.string().optional(),
+  quadra: z.string().optional(),
+  lote: z.string().optional(),
+  deadline: z.string().optional().nullable(),
+  link: z.string().optional(),
+  started_at: z.string().optional().nullable(),
+  completed_at: z.string().optional().nullable(),
+  pauses: z.array(z.any()).optional(),
+  subtask_id: z.coerce.number().int().optional(),
+  done: z.boolean().optional(),
+});
 
 export const deleteTaskSchema = z.object({
   id: z.coerce.string().min(1, "ID é obrigatório"),

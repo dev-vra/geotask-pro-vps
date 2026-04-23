@@ -1,6 +1,7 @@
 import { logActivity } from "@/lib/activityLog";
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
 
 // Helper: create notifications for all users in a sector
 async function notifySector(
@@ -66,6 +67,9 @@ async function notifyUser(
 // GET /api/comments?task_id=X
 export async function GET(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { searchParams } = new URL(req.url);
     const taskIdRaw = searchParams.get("task_id");
 
@@ -130,6 +134,10 @@ export async function GET(req: Request) {
 // POST /api/comments
 export async function POST(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
+
     const { task_id, user_id, content } = await req.json();
 
     if (!task_id || !content) {
@@ -139,11 +147,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const effectiveUserId = user_id ? Number(user_id) : currentUser.id;
+
     // 1. Create Comment
     const comment = await prisma.comment.create({
       data: {
         task_id: Number(task_id),
-        user_id: user_id ? Number(user_id) : null,
+        user_id: effectiveUserId,
         content,
       },
     });
@@ -154,16 +164,9 @@ export async function POST(req: Request) {
     });
     const taskTitle = task?.title || "uma tarefa";
 
-    let authorName = "Alguém";
-    if (user_id) {
-      const u = await prisma.user.findUnique({
-        where: { id: Number(user_id) },
-      });
-      if (u) authorName = u.name;
-    }
+    let authorName = currentUser.name || "Alguém";
 
-    // 2. Parse @User Mentions (match full name until space/punctuation, skip @# sector mentions)
-    // We use a greedy pattern to capture full names like "João Silva"
+    // 2. Parse @User Mentions
     const userMentionRegex =
       /@(?!#)([A-ZÀ-Úa-zà-ú][A-ZÀ-Úa-zà-ú0-9 ]*?)(?=\s{2}|[,.!?\n]|$)/g;
     let match;
@@ -175,31 +178,25 @@ export async function POST(req: Request) {
       const namePart = match[1].trim();
       if (!namePart) continue;
 
-      console.log(`[API] Checking mention for: "${namePart}"`);
-
-      // Fuzzy search — find first user whose name contains the mentioned part
       const mentionedUser = await prisma.user.findFirst({
         where: {
           name: { contains: namePart, mode: "insensitive" },
-          NOT: { id: user_id ? Number(user_id) : 0 },
+          NOT: { id: effectiveUserId },
         },
       });
 
       if (mentionedUser) {
-        console.log(`[API] User matched: ${mentionedUser.name}`);
         if (!mentionedUserIds.has(mentionedUser.id)) {
           mentionedUserIds.add(mentionedUser.id);
-
           await prisma.mention.create({
             data: {
               comment_id: comment.id,
               task_id: Number(task_id),
               mention_type: "user",
               mentioned_user_id: mentionedUser.id,
-              mentioned_by_id: user_id ? Number(user_id) : null,
+              mentioned_by_id: effectiveUserId,
             },
           });
-
           await notifyUser(
             mentionedUser.id,
             "mention",
@@ -212,43 +209,33 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Parse @#Sector Mentions (full sector name until trailing space/punctuation)
+    // 3. Parse @#Sector Mentions
     const sectorMentionRegex =
       /@#([A-ZÀ-Úa-zà-ú][A-ZÀ-Úa-zà-ú0-9 ]*?)(?=\s{2}|[,.!?\n]|$)/g;
     const mentionedSectors = new Set<number>();
-
-    // Fetch all sectors for lookup
     const allSectors = await prisma.sector.findMany();
 
     sectorMentionRegex.lastIndex = 0;
     while ((match = sectorMentionRegex.exec(content)) !== null) {
       const sectorName = match[1].trim();
       if (!sectorName) continue;
-      console.log(`[API] Checking sector mention: "${sectorName}"`);
-
-      // Find sector by name (case insensitive, exact or partial)
       const targetSector = allSectors.find(
         (s) =>
           s.name.toLowerCase() === sectorName.toLowerCase() ||
           s.name.toLowerCase().includes(sectorName.toLowerCase()),
       );
-
       if (targetSector) {
-        console.log(`[API] Sector matched: ${targetSector.name}`);
         if (!mentionedSectors.has(targetSector.id)) {
           mentionedSectors.add(targetSector.id);
-
           await prisma.mention.create({
             data: {
               comment_id: comment.id,
               task_id: Number(task_id),
               mention_type: "sector",
               mentioned_sector_id: targetSector.id,
-              mentioned_by_id: user_id ? Number(user_id) : null,
+              mentioned_by_id: effectiveUserId,
             },
           });
-
-          // Notify all users of that sector
           await notifySector(
             targetSector.id,
             "mention_sector",
@@ -256,16 +243,14 @@ export async function POST(req: Request) {
             `${authorName} mencionou o setor "${targetSector.name}" na tarefa "${taskTitle}".`,
             Number(task_id),
             comment.id,
-            user_id ? Number(user_id) : undefined,
+            effectiveUserId,
           );
         }
-      } else {
-        console.log(`[API] No sector match for: "${sectorName}"`);
       }
     }
 
     logActivity(
-      user_id ? Number(user_id) : null,
+      effectiveUserId,
       authorName,
       "comment_added",
       "comment",

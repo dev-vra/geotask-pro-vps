@@ -1,8 +1,13 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
     const types = await prisma.taskType.findMany({
       include: {
         Sector: true,
@@ -25,6 +30,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_task_types);
+    if (authResult instanceof NextResponse) return authResult;
+
     const body = await req.json();
     const { name, sector_id } = body;
 
@@ -63,6 +71,9 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_task_types);
+    if (authResult instanceof NextResponse) return authResult;
+
     const body = await req.json();
     const { id, name, sector_id } = body;
 
@@ -102,6 +113,9 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const authResult = await requirePermission(req, p => p.settings.manage_task_types);
+    if (authResult instanceof NextResponse) return authResult;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
@@ -122,3 +136,4 @@ export async function DELETE(req: Request) {
     );
   }
 }
+

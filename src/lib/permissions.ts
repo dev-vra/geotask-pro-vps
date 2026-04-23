@@ -12,6 +12,10 @@ export interface AppPermissions {
     gaming: boolean;
     settings: boolean;
     view_all_templates: boolean;
+    reurb: boolean;
+    reurb_dashboard: boolean;
+    reurb_processos: boolean;
+    reurbDocs: boolean;
   };
   tasks: {
     create: boolean;
@@ -35,6 +39,18 @@ export interface AppPermissions {
     manage_teams: boolean;
     manage_user_sectors: boolean;
   };
+  reurb: {
+    view: boolean;
+    view_all: boolean;
+    create: boolean;
+    edit: boolean;
+    advance_stage: boolean;
+    add_comment: boolean;
+    upload_attachment: boolean;
+    confirm_registration: boolean;
+    manage: boolean;
+    view_dashboard: boolean;
+  };
 }
 
 // Display name mapping: Admin appears as "Gestor" in the UI
@@ -51,7 +67,7 @@ export const getPermissions = (user?: User | null): AppPermissions => {
     pages: {
       dashboard: false, kanban: false, cronograma: false, mindmap: false,
       list: true, templates: false, activity_log: false, gaming: true, settings: false,
-      view_all_templates: false,
+      view_all_templates: false, reurb: false, reurb_dashboard: false, reurb_processos: false, reurbDocs: false,
     },
     tasks: {
       create: false, edit_all: false, edit_retroactive_dates: false,
@@ -62,6 +78,11 @@ export const getPermissions = (user?: User | null): AppPermissions => {
     settings: {
       manage_users: false, manage_roles: false, manage_locations: false,
       manage_task_types: false, manage_teams: false, manage_user_sectors: false,
+    },
+    reurb: {
+      view: false, view_all: false, create: false, edit: false,
+      advance_stage: false, add_comment: false, upload_attachment: false,
+      confirm_registration: false, manage: false, view_dashboard: false,
     },
   };
 
@@ -76,6 +97,7 @@ export const getPermissions = (user?: User | null): AppPermissions => {
       pages: { ...defaultPerms.pages, ...(rawPerms.pages || {}) },
       tasks: { ...defaultPerms.tasks, ...(rawPerms.tasks || {}) },
       settings: { ...defaultPerms.settings, ...(rawPerms.settings || {}) },
+      reurb: { ...defaultPerms.reurb, ...(rawPerms.reurb || {}) },
     };
   }
 
@@ -130,6 +152,27 @@ export const getPermissions = (user?: User | null): AppPermissions => {
   p.settings.manage_task_types = isAdmin || isGerente || isCoordSetores;
   p.settings.manage_teams = isAdmin || isGerente;
   p.settings.manage_user_sectors = isAdmin || isGerente;
+
+  // REURB
+  const canViewReurb = isAdmin || isGerente || isGestor || isCoordSetores || isLiderado || isSocio || isDiretor || isGM;
+  p.reurb.view            = canViewReurb;
+  p.reurb.view_all        = isAdmin || isGerente || isSocio || isDiretor || isGM;
+  p.reurb.create          = isAdmin || isGerente || isGestor || isCoordSetores;
+  p.reurb.edit            = isAdmin || isGerente || isGestor || isCoordSetores;
+  p.reurb.advance_stage   = isAdmin || isGerente || isGestor || isCoordSetores;
+  p.reurb.add_comment     = canViewReurb;
+  p.reurb.upload_attachment = isAdmin || isGerente || isGestor || isCoordSetores;
+  p.reurb.confirm_registration = isAdmin || isGerente || isGestor;
+  p.reurb.manage          = isAdmin || isGerente;
+  p.reurb.view_dashboard  = isAdmin || isGerente || isGestor || isCoordSetores || isSocio || isDiretor || isGM;
+  p.pages.reurb           = p.reurb.view;
+  p.pages.reurb_dashboard = p.reurb.view_dashboard;
+  p.pages.reurb_processos = p.reurb.view;
+
+  // reurbDocs: acesso por setor (Reurb, Gerencia, Coordenação, Diretoria)
+  const userSectorName = ((user as any)?.sector?.name || "").toLowerCase();
+  const reurbDocsSectors = ["reurb", "gerencia", "coordenação", "coordenacao", "diretoria"];
+  p.pages.reurbDocs = reurbDocsSectors.some((s) => userSectorName.includes(s));
 
   return p;
 };

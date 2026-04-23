@@ -4,6 +4,7 @@ import {
   canManageAllGamings,
   getSubordinatesRecursiveIds,
 } from "@/lib/gaming/hierarchy";
+import { requireAuth } from "@/lib/auth";
 
 export async function POST(
   req: Request,
@@ -11,19 +12,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const userIdHeader = req.headers.get("X-User-Id");
-    if (!userIdHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+    const currentUser = authResult;
 
     const gamingId = parseInt(id);
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: parseInt(userIdHeader) },
-      include: { Role: true, Sector: true },
-    });
-
-    if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const gaming = await prisma.gaming.findUnique({
       where: { id: gamingId },

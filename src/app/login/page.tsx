@@ -22,8 +22,19 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("geotask_user");
-    if (saved) router.push("/");
+    // Check if already authenticated via cookie
+    fetch("/api/auth/me", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      credentials: "include",
+    })
+      .then((r) => {
+        if (r.ok) router.push("/");
+      })
+      .catch(() => {
+        // Not authenticated — stay on login
+      });
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,9 +46,11 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
       });
       const data = await res.json();
       if (res.ok) {
+        // Save user data to localStorage for UI display (not for auth)
         localStorage.setItem("geotask_user", JSON.stringify(data));
         router.push("/");
       } else {

@@ -285,8 +285,12 @@ export function SettingsPage({
     setIsDeletingUser(true);
     try {
       const res = await authFetch(
-        `/api/users?id=${permanentDeleteUserId}&admin_id=${currentUser?.id}&password=${encodeURIComponent(password)}&permanent=true`,
-        { method: "DELETE" }
+        `/api/users?id=${permanentDeleteUserId}&permanent=true`,
+        { 
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_id: currentUser?.id, password })
+        }
       );
       if (res.ok) {
         setShowPermanentDeleteModal(false);

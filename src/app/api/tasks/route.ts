@@ -4,6 +4,9 @@ import { type Prisma } from "@prisma/client";
 import { type NextRequest, NextResponse } from "next/server";
 import { broadcast } from "../events/route";
 import { calculateNextRecurrence } from "@/lib/recurrence";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/requirePermission";
+import { logger } from "@/lib/logger";
 
 async function resolveSectorId(s: any, cache?: Record<string, number | null>): Promise<number | null> {
   if (!s) return null;
@@ -75,7 +78,7 @@ async function notifyUser(
       data: { user_id: userId, type, title, message, task_id: taskId },
     });
   } catch (e) {
-    console.error("Erro ao criar notificação:", e);
+    logger.error("Erro ao criar notificação:", { error: String(e) });
   }
 }
 
@@ -106,7 +109,7 @@ async function notifyManagers(
       await notifyUser(m.id, type, title, message, taskId);
     }
   } catch (e) {
-    console.error("Erro ao notificar gestores:", e);
+    logger.error("Erro ao notificar gestores:", { error: String(e) });
   }
 }
 
@@ -136,6 +139,9 @@ function parseBackendDate(d: any): Date | null {
 // GET /api/tasks?page=1&limit=50&status=A+Fazer&sector_id=3
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (authResult instanceof NextResponse) return authResult;
+
     const url = request.nextUrl;
     const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
     const limit = url.searchParams.get("limit")
@@ -417,7 +423,7 @@ export async function GET(request: NextRequest) {
     // Default: return flat array (backward compatible)
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Erro ao buscar tarefas:", error);
+    logger.error("Erro ao buscar tarefas", { error: String(error) });
     return NextResponse.json(
       { error: "Erro ao buscar tarefas" },
       { status: 500 },
@@ -425,10 +431,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { sanitizeObject } from "@/lib/sanitize";
+
 // POST /api/tasks
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const authResult = await requirePermission(req, p => p.tasks.create);
+    if (authResult instanceof NextResponse) return authResult;
+
+    let body = await req.json();
+    body = sanitizeObject(body);
     const cache = {
       sectors: {} as Record<string, number | null>,
       users: {} as Record<string, number | null>,
@@ -651,18 +663,19 @@ export async function POST(req: Request) {
           "task",
           newTask.id,
           `Criou a tarefa "${title}"`,
+          req,
         );
 
         broadcast("TASK_CREATED", { taskId: newTask.id, creatorId: createdById });
       } catch (err) {
-        console.error("Error in POST background work:", err);
+        logger.error("Error in POST background work:", { error: String(err) });
       }
     };
 
     backgroundWork();
     return response;
   } catch (error: any) {
-    console.error("Erro ao criar tarefa:", error);
+    logger.error("Erro ao criar tarefa:", { error: String(error) });
     return NextResponse.json(
       { error: "Erro ao criar tarefa: " + error.message },
       { status: 500 },
@@ -693,6 +706,7 @@ async function logHistory(
   field: string,
   oldValue: any,
   newValue: any,
+  req: Request,
   cache?: {
     sectors: Record<number, string>;
     users: Record<number, string>;
@@ -779,7 +793,11 @@ async function logHistory(
 // PATCH /api/tasks
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
+    let body = await req.json();
+    body = sanitizeObject(body);
     const { id, action, user_id, ...data } = body;
     const userId = user_id ? Number(user_id) : null;
 
@@ -858,7 +876,7 @@ export async function PATCH(req: Request) {
       // Critical path: update task + log history in parallel
       await Promise.all([
         prisma.task.update({ where: { id: Number(id) }, data: updateData }),
-        logHistory(task.id, userId, "status", task.status, status, cache),
+        logHistory(task.id, userId, "status", task.status, status, req, cache),
       ]);
 
       // Respond immediately
@@ -889,7 +907,7 @@ export async function PATCH(req: Request) {
             ? (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || "Usuário"
             : "Sistema";
           
-          logActivity(userId, userName, "task_status_changed", "task", task.id, `Status: ${task.status} → ${status} — "${task.title}"`);
+          logActivity(userId, userName, "task_status_changed", "task", task.id, `Status: ${task.status} → ${status} — "${task.title}"`, req);
 
           if (task.parent_id) {
             const parent = await prisma.task.findUnique({
@@ -996,7 +1014,7 @@ export async function PATCH(req: Request) {
             }
           }
         } catch (err) {
-          console.error("Error in status update background work:", err);
+          logger.error("Error in status update background work:", { error: String(err) });
         }
       };
 
@@ -1009,6 +1027,8 @@ export async function PATCH(req: Request) {
         where: { id: Number(userId) },
         include: { Role: true },
       });
+      if (!userRequesting) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
+      
       const roleName = userRequesting?.Role?.name || "";
       const isCreator = task.created_by_id === userId;
       const isLeadership = [
@@ -1073,7 +1093,7 @@ export async function PATCH(req: Request) {
       const basicFields = ["title", "description", "priority", "type", "nucleus", "quadra", "lote"];
       for (const f of basicFields) {
         if (data[f] !== undefined) {
-          await logHistory(task.id, userId, f, (task as any)[f], data[f], cache);
+          await logHistory(task.id, userId, f, (task as any)[f], data[f], req, cache);
           updateData[f] = data[f];
         }
       }
@@ -1089,7 +1109,7 @@ export async function PATCH(req: Request) {
         if (updatedStarted !== undefined) {
           const s = updatedStarted ? new Date(updatedStarted) : null;
           if (s?.getTime() !== task.started_at?.getTime()) {
-            await logHistory(task.id, userId, "started_at", task.started_at, s, cache);
+            await logHistory(task.id, userId, "started_at", task.started_at, s, req, cache);
             updateData.started_at = s;
             newStarted = s;
           }
@@ -1098,7 +1118,7 @@ export async function PATCH(req: Request) {
         if (updatedCompleted !== undefined) {
           const c = updatedCompleted ? new Date(updatedCompleted) : null;
           if (c?.getTime() !== task.completed_at?.getTime()) {
-            await logHistory(task.id, userId, "completed_at", task.completed_at, c, cache);
+            await logHistory(task.id, userId, "completed_at", task.completed_at, c, req, cache);
             updateData.completed_at = c;
             newCompleted = c;
           }
@@ -1126,7 +1146,7 @@ export async function PATCH(req: Request) {
       if (data.sector !== undefined) {
         const sId = await resolveSectorId(data.sector, cache.resolution.sectors);
         if (sId !== task.sector_id) {
-          await logHistory(task.id, userId, "sector_id", task.sector_id, sId, cache);
+          await logHistory(task.id, userId, "sector_id", task.sector_id, sId, req, cache);
           updateData.sector_id = sId;
         }
       }
@@ -1134,7 +1154,7 @@ export async function PATCH(req: Request) {
       if (data.responsible_id !== undefined) {
         const rId = data.responsible_id && !isNaN(Number(data.responsible_id)) ? Number(data.responsible_id) : null;
         if (rId !== task.responsible_id) {
-          await logHistory(task.id, userId, "responsible_id", task.responsible_id, rId, cache);
+          await logHistory(task.id, userId, "responsible_id", task.responsible_id, rId, req, cache);
           updateData.responsible_id = rId;
 
           if (rId) {
@@ -1157,7 +1177,7 @@ export async function PATCH(req: Request) {
           if (c) cId = c.id;
         }
         if (cId !== task.contract_id) {
-          await logHistory(task.id, userId, "contract_id", task.contract_id, cId, cache);
+          await logHistory(task.id, userId, "contract_id", task.contract_id, cId, req, cache);
           updateData.contract_id = cId;
         }
       }
@@ -1170,7 +1190,7 @@ export async function PATCH(req: Request) {
           if (c) cityId = c.id;
         }
         if (cityId !== task.city_id) {
-          await logHistory(task.id, userId, "city_id", task.city_id, cityId, cache);
+          await logHistory(task.id, userId, "city_id", task.city_id, cityId, req, cache);
           updateData.city_id = cityId;
         }
       }
@@ -1179,7 +1199,7 @@ export async function PATCH(req: Request) {
         const d = parseBackendDate(data.deadline);
         const oldD = task.deadline ? new Date(task.deadline) : null;
         if (d?.getTime() !== oldD?.getTime()) {
-          await logHistory(task.id, userId, "deadline", task.deadline, d, cache);
+          await logHistory(task.id, userId, "deadline", task.deadline, d, req, cache);
           updateData.deadline = d;
         }
       }
@@ -1290,9 +1310,9 @@ export async function PATCH(req: Request) {
           }
 
           const diffStr = diffParts.length > 0 ? diffParts.join(" | ") : "campos editados";
-          logActivity(userId, updaterName, "task_updated", "task", task.id, `"${task.title}" — ${diffStr}`);
+          logActivity(userId, updaterName, "task_updated", "task", task.id, `"${task.title}" — ${diffStr}`, req);
         } catch (err) {
-          console.error("Error in fields update background work:", err);
+          logger.error("Error in fields update background work:", { error: String(err) });
         }
       };
 
@@ -1329,7 +1349,7 @@ export async function PATCH(req: Request) {
       if (reqStarted !== undefined) {
         const s = reqStarted ? new Date(reqStarted) : null;
         if (s?.getTime() !== task.started_at?.getTime()) {
-          await logHistory(task.id, userId, "started_at", task.started_at, s);
+          await logHistory(task.id, userId, "started_at", task.started_at, s, req);
           taskUpdate.started_at = s;
           effectiveStarted = s;
         }
@@ -1337,7 +1357,7 @@ export async function PATCH(req: Request) {
       if (reqCompleted !== undefined) {
         const c = reqCompleted ? new Date(reqCompleted) : null;
         if (c?.getTime() !== task.completed_at?.getTime()) {
-          await logHistory(task.id, userId, "completed_at", task.completed_at, c);
+          await logHistory(task.id, userId, "completed_at", task.completed_at, c, req);
           taskUpdate.completed_at = c;
           effectiveCompleted = c;
         }
@@ -1374,6 +1394,7 @@ export async function PATCH(req: Request) {
         "Pausas",
         "editado",
         `${pauses.length} pausa(s)`,
+        req,
       );
 
       // Activity log
@@ -1392,6 +1413,7 @@ export async function PATCH(req: Request) {
         "task",
         task.id,
         `Pausas atualizadas: ${pauses.length} período(s) — "${task.title}"`,
+        req,
       );
 
       return NextResponse.json({ message: "Pausas atualizadas com sucesso" });
@@ -1447,7 +1469,7 @@ export async function PATCH(req: Request) {
       }
       return NextResponse.json({ message: "Subtarefa atualizada" });
     } else if (action === "reset_status") {
-      const { password } = data;
+      const { password } = body;
       // Permission Validation
       const userRequesting = await prisma.user.findUnique({
         where: { id: Number(userId) },
@@ -1503,15 +1525,6 @@ export async function PATCH(req: Request) {
         where: { task_id: Number(id) },
       });
 
-      // Log History
-      await logHistory(
-        task.id,
-        userId,
-        "status",
-        task.status,
-        "A Fazer (Reset)",
-      );
-
       // Activity Log
       logActivity(
         userId,
@@ -1520,6 +1533,7 @@ export async function PATCH(req: Request) {
         "task",
         task.id,
         `Tarefa resetada para "A Fazer" — "${task.title}"`,
+        req,
       );
 
       broadcast("TASK_UPDATED", { taskId: Number(id), userId });
@@ -1528,7 +1542,7 @@ export async function PATCH(req: Request) {
     broadcast("TASK_UPDATED", { taskId: Number(id), userId });
     return NextResponse.json({ message: "Atualizado com sucesso" });
   } catch (error) {
-    console.error("Erro ao atualizar tarefa:", error);
+    logger.error("Erro ao atualizar tarefa", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao atualizar tarefa" },
       { status: 500 },
@@ -1536,24 +1550,24 @@ export async function PATCH(req: Request) {
   }
 }
 
-// DELETE /api/tasks
 export async function DELETE(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    const adminId = searchParams.get("admin_id"); // User making the deletion request
-    const password = searchParams.get("password"); // Password of the admin
+    const authResult = await requireAuth(req);
+    if (authResult instanceof NextResponse) return authResult;
+
+    const body = await req.json();
+    const { id, admin_id, password } = body;
 
     if (!id)
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
-    if (!adminId || !password) {
+    if (!admin_id || !password) {
       return NextResponse.json({ error: "Permissão e senha são obrigatórias para exclusão." }, { status: 401 });
     }
 
     // Verify Admin permission and Password
     const adminUser = await prisma.user.findUnique({
-      where: { id: Number(adminId) },
+      where: { id: Number(admin_id) },
       include: { Role: true },
     });
 
@@ -1582,18 +1596,19 @@ export async function DELETE(req: Request) {
     await prisma.task.delete({ where: { id: Number(id) } });
 
     logActivity(
-      Number(adminId),
+      Number(admin_id),
       adminUser.name,
       "task_deleted",
       "task",
       Number(id),
       `Excluiu definitivamente a tarefa "${taskToDelete.title}"`,
+      req,
     );
 
-    broadcast("TASK_DELETED", { taskId: Number(id), userId: adminId });
+    broadcast("TASK_DELETED", { taskId: Number(id), userId: admin_id });
     return NextResponse.json({ message: "Tarefa removida com sucesso" });
   } catch (error) {
-    console.error("Erro ao remover tarefa:", error);
+    logger.error("Erro ao remover tarefa", { error: String(error) }, req);
     return NextResponse.json(
       { error: "Erro ao remover tarefa" },
       { status: 500 },

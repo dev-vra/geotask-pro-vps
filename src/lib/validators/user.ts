@@ -30,6 +30,10 @@ export const updateUserSchema = z.object({
   active: z.boolean().optional(),
   team_id: z.coerce.number().int().positive().nullable().optional(),
   manager_id: z.coerce.number().int().positive().nullable().optional(),
-  password: z.string().min(6).optional(),
+  password: z.string()
+    .min(8, "A senha deve ter pelo menos 8 caracteres")
+    .regex(/[A-Z]/, "A senha deve conter pelo menos uma letra maiúscula")
+    .regex(/[0-9]/, "A senha deve conter pelo menos um número")
+    .optional(),
   resetPassword: z.boolean().optional(),
 });

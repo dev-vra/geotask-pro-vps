@@ -36,7 +36,7 @@ describe("changePasswordSchema", () => {
   it("should accept valid change password data", () => {
     const result = changePasswordSchema.safeParse({
       userId: 1,
-      newPassword: "newpass123",
+      newPassword: "Newpass123",
       currentPassword: "oldpass",
     });
     expect(result.success).toBe(true);
@@ -61,7 +61,7 @@ describe("changePasswordSchema", () => {
   it("should allow null currentPassword (admin reset)", () => {
     const result = changePasswordSchema.safeParse({
       userId: 1,
-      newPassword: "newpass123",
+      newPassword: "Newpass123",
       currentPassword: null,
     });
     expect(result.success).toBe(true);

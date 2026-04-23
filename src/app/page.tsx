@@ -11,6 +11,7 @@ import {
   Settings,
   List,
   Trophy,
+  FolderKanban,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -79,6 +80,9 @@ const TaskDetailModal = dynamic(
   () => import("@/components/tasks/TaskDetailModal"),
 );
 const NewTaskModal = dynamic(() => import("@/components/tasks/NewTaskModal"));
+const ReurbPage = dynamic(() => import("@/components/reurb/ReurbPage"), {
+  loading: () => <PageLoader />,
+});
 const GamingPage = dynamic(() => import("@/components/gaming/GamingPage"), {
   loading: () => <PageLoader />,
 });
@@ -379,6 +383,12 @@ export default function GeoTask() {
   };
 
   const canCreate = appPerms.tasks.create;
+  const canAccessReurbPage =
+    appPerms.pages.reurb ||
+    appPerms.pages.reurb_dashboard ||
+    appPerms.pages.reurb_processos ||
+    appPerms.reurb.view ||
+    appPerms.reurb.view_dashboard;
 
   // ── Task visibility (role-based filtering) ──────────────────────────
   const userSectorId = user?.sector?.id || user?.sector_id;
@@ -477,10 +487,12 @@ export default function GeoTask() {
     { id: "notifications", label: "Notificações", icon: Bell },
     { id: "templates", label: "Templates", icon: FileText },
     { id: "gaming", label: "Gaming e Metas", icon: Trophy },
+    { id: "reurb", label: "REURB", icon: FolderKanban },
     { id: "activity_log", label: "Log de Atividades", icon: ClipboardList },
     { id: "settings", label: "Configurações", icon: Settings },
   ].filter(({ id }) => {
     if (id === "tasks") return canAccess("kanban") || canAccess("list") || canAccess("cronograma") || canAccess("mindmap");
+    if (id === "reurb") return canAccessReurbPage;
     return canAccess(id as any);
   });
 
@@ -703,6 +715,11 @@ export default function GeoTask() {
           {page === "gaming" && canAccess("gaming") && (
             <GamingPage T={T} user={user} users={dbUsers} sectors={dbSectors} />
           )}
+
+          {page === "reurb" && canAccessReurbPage && (
+            <ReurbPage user={user} />
+          )}
+
         </div>
       </div>
 
