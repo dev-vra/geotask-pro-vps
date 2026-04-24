@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "https://geotask.duckdns.org/$1"
+    }
+  ]
+}
