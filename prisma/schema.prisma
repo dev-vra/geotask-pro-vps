@@ -6,6 +6,14 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ReurbTipoSolicitacao {
+  INSTAURACAO
+  MATRICULAS
+  MAPA_CADASTRAL
+  EDITAL
+  CRF
+}
+
 model ActivityLog {
   id         Int      @id @default(autoincrement())
   user_id    Int?
@@ -45,10 +53,11 @@ model Comment {
 }
 
 model Contract {
-  id            Int            @id @default(autoincrement())
-  name          String         @unique
-  neighborhoods Neighborhood[]
-  tasks         Task[]
+  id              Int            @id @default(autoincrement())
+  name            String         @unique
+  neighborhoods   Neighborhood[]
+  tasks           Task[]
+  reurbProcesses  ReurbProcess[] @relation("ReurbContract")
 }
 
 model Mention {
@@ -68,33 +77,38 @@ model Mention {
 }
 
 model Neighborhood {
-  id          Int       @id @default(autoincrement())
-  name        String
-  city_id     Int
-  contract_id Int?
-  city        City      @relation(fields: [city_id], references: [id], onDelete: Cascade)
-  contract    Contract? @relation(fields: [contract_id], references: [id])
-  tasks       Task[]
+  id              Int             @id @default(autoincrement())
+  name            String
+  city_id         Int
+  contract_id     Int?
+  city            City            @relation(fields: [city_id], references: [id], onDelete: Cascade)
+  contract        Contract?       @relation(fields: [contract_id], references: [id])
+  tasks           Task[]
+  reurbProcesses  ReurbProcess[]  @relation("ReurbNeighborhood")
 
   @@unique([city_id, name])
 }
 
 model Notification {
-  id         Int      @id @default(autoincrement())
-  type       String
-  title      String
-  message    String?
-  read       Boolean  @default(false)
-  created_at DateTime @default(now())
-  user_id    Int
-  task_id    Int?
-  comment_id Int?
-  comment    Comment? @relation(fields: [comment_id], references: [id])
-  task       Task?    @relation(fields: [task_id], references: [id])
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                  Int           @id @default(autoincrement())
+  type                String
+  title               String
+  message             String?
+  read                Boolean       @default(false)
+  created_at          DateTime      @default(now())
+  user_id             Int
+  task_id             Int?
+  comment_id          Int?
+  reurb_protocol_id   Int?
+  reurb_comment_id    Int?
+  comment             Comment?      @relation(fields: [comment_id], references: [id])
+  task                Task?         @relation(fields: [task_id], references: [id])
+  user                User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  reurb_comment       ReurbComment? @relation(fields: [reurb_comment_id], references: [id])
 
   @@index([task_id])
   @@index([user_id, read])
+  @@index([reurb_protocol_id])
 }
 
 model Role {
@@ -119,6 +133,8 @@ model Sector {
   templateSubtasks TemplateSubtask[]
   users           User[]
   userSectors     UserSector[]
+  reurbProcesses  ReurbProcess[]    @relation("ReurbSector")
+  reurbMentions   ReurbMention[]    @relation("ReurbMentionSector")
 }
 
 model Subtask {
@@ -199,6 +215,7 @@ model TaskAttachment {
   mime_type      String
   size           Int
   url            String
+  file_hash      String?
   uploaded_by_id Int?
   created_at     DateTime @default(now())
   task           Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
@@ -303,7 +320,6 @@ model User {
   created_at                              DateTime          @default(now())
   active                                  Boolean           @default(true)
   must_change_password                    Boolean           @default(true)
-  accepted_terms_at                       DateTime?
   role_id                                 Int
   sector_id                               Int
   team_id                                 Int?
@@ -332,6 +348,14 @@ model User {
   gamings_evaluated                       Gaming[]          @relation("GamingEvaluator")
   gaming_histories                        GamingHistory[]
 
+  reurbProcesses                          ReurbProcess[]              @relation("ReurbCreatedBy")
+  reurbSolicitacoes                       ReurbSolicitacao[]          @relation("ReurbSolicitacaoCreator")
+  reurbHistoryActions                     ReurbSolicitacaoHistory[]   @relation("ReurbHistoryUser")
+  reurbAttachments                        ReurbAttachment[]           @relation("ReurbAttachmentUploader")
+  reurbComments                           ReurbComment[]              @relation("ReurbCommentAuthor")
+  reurbMentionsSent                       ReurbMention[]              @relation("ReurbMentionedBy")
+  reurbMentionsReceived                   ReurbMention[]              @relation("ReurbMentionedUser")
+
   @@index([team_id])
   @@index([manager_id])
 }
@@ -352,7 +376,7 @@ model UserSector {
 model Gaming {
   id             Int              @id @default(autoincrement())
   user_id        Int
-  evaluator_id   Int?             
+  evaluator_id   Int?
   cycle_type     String           // "Mensal", "Trimestral", etc
   cycle_name     String           // Identificador do marco temporal (ex: Jan-2026)
   status         String           @default("DRAFT") // DRAFT, CLOSED
@@ -364,7 +388,7 @@ model Gaming {
   evaluator      User?            @relation("GamingEvaluator", fields: [evaluator_id], references: [id], onDelete: SetNull)
   items          GamingItem[]
   history        GamingHistory[]
-  snapshots      GamingSnapshot[] 
+  snapshots      GamingSnapshot[]
 
   @@index([user_id])
   @@index([evaluator_id])
@@ -375,9 +399,9 @@ model GamingItem {
   id             Int       @id @default(autoincrement())
   gaming_id      Int
   description    String
-  weight         Float     
-  target         Float     
-  achieved       Float?    
+  weight         Float
+  target         Float
+  achieved       Float?
 
   gaming         Gaming    @relation(fields: [gaming_id], references: [id], onDelete: Cascade)
 
@@ -387,9 +411,9 @@ model GamingItem {
 model GamingHistory {
   id             Int       @id @default(autoincrement())
   gaming_id      Int
-  user_id        Int?      
-  action         String    
-  details        Json?     
+  user_id        Int?
+  action         String
+  details        Json?
   created_at     DateTime  @default(now())
 
   gaming         Gaming    @relation(fields: [gaming_id], references: [id], onDelete: Cascade)
@@ -401,11 +425,130 @@ model GamingHistory {
 model GamingSnapshot {
   id             Int       @id @default(autoincrement())
   gaming_id      Int
-  file_url       String    
-  file_type      String    
+  file_url       String
+  file_type      String
   created_at     DateTime  @default(now())
 
   gaming         Gaming    @relation(fields: [gaming_id], references: [id], onDelete: Cascade)
 
   @@index([gaming_id])
+}
+
+// -----------------------------------------------------------------------------
+// MÓDULO REURB v2
+// -----------------------------------------------------------------------------
+
+model ReurbProcess {
+  id               Int      @id @default(autoincrement())
+  neighborhood_id  Int      @unique
+  contract_id      Int?
+  sector_id        Int
+  qtde_lotes       Int      @default(0)
+  created_by_id    Int
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  deleted_at       DateTime?
+
+  neighborhood  Neighborhood       @relation("ReurbNeighborhood", fields: [neighborhood_id], references: [id])
+  contract      Contract?          @relation("ReurbContract", fields: [contract_id], references: [id])
+  sector        Sector             @relation("ReurbSector", fields: [sector_id], references: [id])
+  created_by    User               @relation("ReurbCreatedBy", fields: [created_by_id], references: [id])
+  solicitacoes  ReurbSolicitacao[]
+
+  @@index([contract_id])
+  @@index([sector_id, deleted_at])
+  @@index([created_by_id])
+}
+
+model ReurbSolicitacao {
+  id            Int                   @id @default(autoincrement())
+  process_id    Int
+  tipo          ReurbTipoSolicitacao
+  status_atual  String
+  prazo_alerta  DateTime?
+  link          String?
+  created_by_id Int
+  created_at    DateTime              @default(now())
+  updated_at    DateTime              @updatedAt
+
+  process     ReurbProcess              @relation(fields: [process_id], references: [id], onDelete: Cascade)
+  created_by  User                      @relation("ReurbSolicitacaoCreator", fields: [created_by_id], references: [id])
+  history     ReurbSolicitacaoHistory[]
+  attachments ReurbAttachment[]
+  comments    ReurbComment[]
+  mentions    ReurbMention[]
+
+  @@index([process_id])
+  @@index([tipo, status_atual])
+}
+
+model ReurbSolicitacaoHistory {
+  id               Int      @id @default(autoincrement())
+  solicitacao_id   Int
+  status_anterior  String?
+  status_novo      String
+  metadata         Json?
+  user_id          Int
+  ip_address       String
+  user_agent       String?
+  data_acao        DateTime @default(now())
+  previous_hash    String?
+  entry_hash       String
+
+  solicitacao  ReurbSolicitacao @relation(fields: [solicitacao_id], references: [id], onDelete: Cascade)
+  user         User             @relation("ReurbHistoryUser", fields: [user_id], references: [id])
+
+  @@index([solicitacao_id, data_acao])
+  @@index([user_id])
+}
+
+model ReurbAttachment {
+  id               Int      @id @default(autoincrement())
+  solicitacao_id   Int
+  file_name        String
+  original_name    String
+  file_url         String
+  file_type        String
+  size             Int
+  file_hash        String
+  uploaded_ip      String
+  uploaded_by_id   Int
+  created_at       DateTime @default(now())
+
+  solicitacao  ReurbSolicitacao @relation(fields: [solicitacao_id], references: [id], onDelete: Cascade)
+  uploaded_by  User             @relation("ReurbAttachmentUploader", fields: [uploaded_by_id], references: [id])
+
+  @@index([solicitacao_id])
+}
+
+model ReurbComment {
+  id             Int      @id @default(autoincrement())
+  content        String   @db.Text
+  solicitacao_id Int
+  user_id        Int?
+  created_at     DateTime @default(now())
+
+  solicitacao   ReurbSolicitacao @relation(fields: [solicitacao_id], references: [id], onDelete: Cascade)
+  user          User?            @relation("ReurbCommentAuthor", fields: [user_id], references: [id])
+  mentions      ReurbMention[]
+  notifications Notification[]
+
+  @@index([solicitacao_id])
+}
+
+model ReurbMention {
+  id                  Int      @id @default(autoincrement())
+  mention_type        String
+  created_at          DateTime @default(now())
+  comment_id          Int
+  solicitacao_id      Int
+  mentioned_user_id   Int?
+  mentioned_by_id     Int?
+  mentioned_sector_id Int?
+
+  comment            ReurbComment     @relation(fields: [comment_id], references: [id], onDelete: Cascade)
+  solicitacao        ReurbSolicitacao @relation(fields: [solicitacao_id], references: [id], onDelete: Cascade)
+  mentioned_user     User?            @relation("ReurbMentionedUser", fields: [mentioned_user_id], references: [id])
+  mentioned_by       User?            @relation("ReurbMentionedBy", fields: [mentioned_by_id], references: [id])
+  sector             Sector?          @relation("ReurbMentionSector", fields: [mentioned_sector_id], references: [id])
 }
