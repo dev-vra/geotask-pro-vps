@@ -99,13 +99,15 @@ export async function middleware(request: NextRequest) {
 
   // Page routes — redirect to login if no valid token
   if (!token) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = new URL("/login", request.nextUrl);
+    loginUrl.host = request.headers.get("host") || request.nextUrl.host;
     return NextResponse.redirect(loginUrl);
   }
 
   const payload = await verifyToken(token);
   if (!payload) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = new URL("/login", request.nextUrl);
+    loginUrl.host = request.headers.get("host") || request.nextUrl.host;
     const response = NextResponse.redirect(loginUrl);
     // Clear invalid cookie
     response.headers.set(
