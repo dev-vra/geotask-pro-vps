@@ -22,11 +22,18 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://173.249.47.131 https://geotask-pro.vercel.app; frame-ancestors 'none'; object-src 'none';",
+            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://173.249.47.131 https://geotask-pro.vercel.app https://geotask.duckdns.org; frame-ancestors 'none'; object-src 'none';",
           },
         ],
       },
     ];
+  },
+
+  // Allowed origins for Server Actions and RSC
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["geotask-pro.vercel.app", "geotask.duckdns.org"],
+    },
   },
 };
 
