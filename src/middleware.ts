@@ -64,7 +64,11 @@ export async function middleware(request: NextRequest) {
     }
 
     // Cron and Admin tasks use their own secret-based auth
-    if (pathname.startsWith("/api/cron/") || pathname === "/api/admin/recalculate-time") {
+    if (
+      pathname.startsWith("/api/cron/") ||
+      pathname === "/api/tasks/cron" ||
+      pathname === "/api/admin/recalculate-time"
+    ) {
       return NextResponse.next();
     }
 
