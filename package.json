@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "prisma generate && prisma migrate deploy && npx ts-node prisma/seed_roles_v2.ts && npx ts-node scripts/sync_excel.ts && next build",
+    "vercel-build": "echo 'Vercel proxy setup complete - no build required'",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
