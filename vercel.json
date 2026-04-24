@@ -2,6 +2,13 @@
   "rewrites": [
     {
       "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "host",
+          "value": "geotask-pro.vercel.app"
+        }
+      ],
       "destination": "https://geotask.duckdns.org/$1"
     }
   ]
