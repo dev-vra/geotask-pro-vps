@@ -37,15 +37,19 @@ export default function LoginPage() {
       });
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Read from DOM to handle browser autofill (Firefox doesn't fire onChange)
+    const fd = new FormData(e.currentTarget);
+    const emailVal = (fd.get("email") as string) || email;
+    const passwordVal = (fd.get("password") as string) || password;
     setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: emailVal, password: passwordVal }),
         credentials: "include",
       });
       const data = await res.json();
@@ -105,10 +109,12 @@ export default function LoginPage() {
               />
               <input
                 type="email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
                 required
+                autoComplete="email"
                 className="w-full py-3 px-3.5 pl-11 bg-slate-50 border-[1.5px] border-slate-200 rounded-xl text-slate-800 text-[15px] outline-none transition-all duration-200 input-focus-ring placeholder:text-slate-400"
               />
             </div>
@@ -126,10 +132,12 @@ export default function LoginPage() {
               />
               <input
                 type={showPwd ? "text" : "password"}
+                name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
                 className="w-full py-3 px-3.5 pl-11 pr-11 bg-slate-50 border-[1.5px] border-slate-200 rounded-xl text-slate-800 text-[15px] outline-none transition-all duration-200 input-focus-ring placeholder:text-slate-400"
               />
               <button
