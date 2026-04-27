@@ -61,6 +61,13 @@ next-env.d.ts
 # Claude Code
 .claude/
 
+# Terraform (contains secrets)
+infra/terraform.tfvars
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+
 # Projetos separados (não fazem parte deste repo)
 /geotask-pro-v2/
 /bonini_erp/
