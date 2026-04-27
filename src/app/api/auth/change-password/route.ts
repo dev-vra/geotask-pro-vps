@@ -3,12 +3,21 @@ import { logActivity } from "@/lib/activityLog";
 import prisma from "@/lib/prisma";
 import { getPermissions } from "@/lib/permissions";
 import { changePasswordSchema } from "@/lib/validators/auth";
-import { logger } from "@/lib/logger";
+import { logger, getClientIP } from "@/lib/logger";
+import { rateLimit } from "@/lib/rateLimit";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIP(req);
+    if (!rateLimit(`change-password_${ip}`, 5, 60000)) {
+      return NextResponse.json(
+        { error: "Muitas tentativas. Tente novamente em 1 minuto." },
+        { status: 429 },
+      );
+    }
+
     const body = await req.json();
     const parsed = changePasswordSchema.safeParse(body);
     if (!parsed.success) {

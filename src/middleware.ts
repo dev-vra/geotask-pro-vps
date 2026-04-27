@@ -11,7 +11,7 @@ import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "geotask_token";
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "CHANGE_ME_IN_PRODUCTION_jwt_secret_32chars!!"
+  process.env.JWT_SECRET ?? "dev-only-insecure-secret"
 );
 
 const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/api/auth/logout", "/api/setup"]);

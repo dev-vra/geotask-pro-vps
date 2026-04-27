@@ -8,7 +8,7 @@ export async function GET(req: Request) {
     const token = searchParams.get("token") || req.headers.get("x-cron-token");
 
     // Security check
-    if (token !== process.env.CRON_SECRET && process.env.NODE_ENV === "production") {
+    if (!token || token !== process.env.CRON_SECRET) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

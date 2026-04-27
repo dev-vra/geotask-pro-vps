@@ -3,17 +3,20 @@ import prisma from "@/lib/prisma";
 import { createUserSchema, updateUserSchema } from "@/lib/validators/user";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { requireAuth, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/requirePermission";
 import { logger } from "@/lib/logger";
 import { sanitizeObject } from "@/lib/sanitize";
 
-const DEFAULT_PASSWORD = process.env.DEFAULT_USER_PASSWORD || "Mudar@123";
+const DEFAULT_PASSWORD = process.env.DEFAULT_USER_PASSWORD;
+if (!DEFAULT_PASSWORD && process.env.NODE_ENV === "production") {
+  throw new Error("DEFAULT_USER_PASSWORD environment variable is required in production");
+}
 
 // GET /api/users
 export async function GET(req: Request) {
   try {
-    const authResult = await requireAuth(req);
+    const authResult = await requirePermission(req, (p) => p.settings.manage_users);
     if (authResult instanceof NextResponse) return authResult;
 
     const { searchParams } = new URL(req.url);
@@ -102,7 +105,7 @@ export async function POST(req: Request) {
       .toUpperCase()
       .slice(0, 2);
 
-    const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+    const hash = await bcrypt.hash(DEFAULT_PASSWORD ?? "Mudar@123", 10);
 
     const user = await prisma.user.create({
       data: {

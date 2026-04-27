@@ -7,8 +7,11 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 // JWT Configuration
 // ---------------------------------------------------------------------------
 
-const JWT_SECRET_RAW = process.env.JWT_SECRET || "CHANGE_ME_IN_PRODUCTION_jwt_secret_32chars!!";
-const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW);
+const JWT_SECRET_RAW = process.env.JWT_SECRET;
+if (!JWT_SECRET_RAW && process.env.NODE_ENV === "production") {
+  throw new Error("JWT_SECRET environment variable is required in production");
+}
+const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW ?? "dev-only-insecure-secret");
 const JWT_EXPIRATION = "8h";
 const COOKIE_NAME = "geotask_token";
 

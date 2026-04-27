@@ -1491,15 +1491,7 @@ export async function PATCH(req: Request) {
         );
       }
       const bcrypt = require("bcryptjs");
-      let passwordValid = false;
-      if (userRequesting.password_hash.startsWith("$2")) {
-        passwordValid = await bcrypt.compare(
-          password,
-          userRequesting.password_hash,
-        );
-      } else {
-        passwordValid = userRequesting.password_hash === password;
-      }
+      const passwordValid = await bcrypt.compare(password, userRequesting.password_hash);
 
       if (!passwordValid) {
         return NextResponse.json(
@@ -1576,9 +1568,7 @@ export async function DELETE(req: Request) {
     }
 
     const bcrypt = require("bcryptjs");
-    const passwordValid = await (adminUser.password_hash.startsWith("$2") 
-      ? bcrypt.compare(password, adminUser.password_hash) 
-      : adminUser.password_hash === password);
+    const passwordValid = await bcrypt.compare(password, adminUser.password_hash);
 
     if (!passwordValid) {
       return NextResponse.json({ error: "Senha incorreta." }, { status: 401 });

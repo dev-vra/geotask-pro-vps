@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -15,7 +16,9 @@ export async function GET(req: Request) {
   const secret = searchParams.get("secret");
   const expectedSecret = process.env.ADMIN_MAINTENANCE_SECRET;
 
-  if (!expectedSecret || secret !== expectedSecret) {
+  const secretValid = expectedSecret && secret &&
+    timingSafeEqual(Buffer.from(secret), Buffer.from(expectedSecret));
+  if (!secretValid) {
     logger.security("Tentativa de acesso não autorizado a endpoint administrativo", {
       endpoint: "/api/admin/recalculate-time",
       provided_secret: secret ? "***" : "none"
