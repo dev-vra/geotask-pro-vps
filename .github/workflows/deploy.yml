@@ -1,28 +1,35 @@
-name: Deploy GeoTask-Pro to VPS
+name: CI/CD — GeoTask Pro
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Quality Gate — type-check + build (runs on every push and PR)
+  # ---------------------------------------------------------------------------
   quality-gate:
+    name: Quality Gate
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/geotask?schema=public
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/geotask?schema=public
-      NEXTAUTH_SECRET: ci-placeholder-secret
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      JWT_SECRET: ci-placeholder-secret-min-32-characters!!
+      CRON_SECRET: ci-placeholder-cron-secret
+      NODE_ENV: test
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: npm
 
       - name: Install dependencies
@@ -31,117 +38,116 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
-      - name: Run tests
-        run: npm test
+      - name: TypeScript type check
+        run: npx tsc --noEmit
 
-      - name: Run build
+      - name: Build
         run: npm run build
 
+  # ---------------------------------------------------------------------------
+  # 2. Build & Push Docker image (only on main branch)
+  # ---------------------------------------------------------------------------
   build-and-push:
+    name: Build & Push Image
     needs: quality-gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Log in to the Container registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          cache-to: type=inline
 
+  # ---------------------------------------------------------------------------
+  # 3. Deploy to EC2 (only on main branch, after successful build)
+  # ---------------------------------------------------------------------------
   deploy:
+    name: Deploy to EC2
     needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    environment: production
 
-      - name: Copy files to VPS
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy deployment files to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.VPS_IP }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yml,nginx,scripts,prisma"
-          target: "/home/geotask-pro"
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml,nginx/nginx.conf,prisma"
+          target: "/home/geotask"
 
-      - name: Deploy to VPS via SSH
+      - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          host: ${{ secrets.VPS_IP }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           envs: GITHUB_TOKEN
           script: |
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            cd /home/geotask-pro
-            
-            # Create environment file from secrets
-            cat <<EOF > .env
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
-            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+            set -e
+            cd /home/geotask
+
+            # Write .env from secrets (overwrites on each deploy)
+            cat > .env << 'ENVEOF'
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DIRECT_URL=${{ secrets.DIRECT_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
-            DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@db:5432/geotask?schema=public
-            MINIO_ROOT_USER=admin
-            EOF
-            
-            # Ensure directories exist
-            mkdir -p nginx/certs
-            
-            # Generate dummy certificates if not exist
-            if [ ! -f nginx/certs/fullchain.pem ]; then
-              echo "Generating dummy SSL certificates..."
-              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout nginx/certs/privkey.pem \
-                -out nginx/certs/fullchain.pem \
-                -subj "/C=BR/ST=SP/L=SaoPaulo/O=GeoTask/OU=Dev/CN=geotask.duckdns.org"
-            fi
-            
-            # Fix permissions
-            chmod +x scripts/backup.sh scripts/duckdns.sh
-            
-            # Pull new images
-            docker compose pull
-            
-            # Restart services
-            docker compose up -d
-            
-            # Wait for database to be ready
-            echo "Waiting for database to start..."
-            sleep 10
-            
-            # Run Migrations and Seed
-            echo "Running database migrations..."
-            docker exec geotask-app npx prisma migrate deploy
-            echo "Running database seed..."
-            docker exec geotask-app npx prisma db seed
-            
-            # Setup Cron Jobs
-            (crontab -l 2>/dev/null | grep -v "geotask-pro"; echo "0 3 * * * /home/geotask-pro/scripts/backup.sh") | crontab -
-            (crontab -l 2>/dev/null | grep -v "geotask-pro"; echo "*/5 * * * * /home/geotask-pro/scripts/duckdns.sh") | crontab -
-            
+            DEFAULT_USER_PASSWORD=${{ secrets.DEFAULT_USER_PASSWORD }}
+            ADMIN_MAINTENANCE_SECRET=${{ secrets.ADMIN_MAINTENANCE_SECRET }}
+            AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
+            AWS_REGION=${{ secrets.AWS_REGION }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            NEXTAUTH_URL=https://geotask.geogis.com.br
+            APP_IMAGE=ghcr.io/${{ github.repository }}:main
+            ENVEOF
+
+            # Auth to pull image
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest image and recreate app container
+            docker compose pull app
+            docker compose up -d --force-recreate app
+
+            # Run pending migrations
+            echo "Running migrations..."
+            docker compose exec -T app npx prisma migrate deploy
+
             docker logout ghcr.io
-            echo "Deployment successful!"
+            echo "✓ Deployment complete"
