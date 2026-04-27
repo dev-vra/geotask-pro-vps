@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { createUserSchema, updateUserSchema } from "@/lib/validators/user";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, type AuthUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/requirePermission";
 import { logger } from "@/lib/logger";
 import { sanitizeObject } from "@/lib/sanitize";
@@ -121,8 +121,8 @@ export async function POST(req: Request) {
     });
 
     logActivity(
-      (authResult as any).user.id,
-      (authResult as any).user.name,
+      (authResult as AuthUser).id,
+      (authResult as AuthUser).name,
       "user_created",
       "user",
       user.id,
@@ -201,8 +201,8 @@ export async function PATCH(req: Request) {
     });
 
     logActivity(
-      (authResult as any).user.id,
-      (authResult as any).user.name,
+      (authResult as AuthUser).id,
+      (authResult as AuthUser).name,
       "user_updated",
       "user",
       user.id,
@@ -310,8 +310,8 @@ export async function DELETE(req: Request) {
       });
 
       logActivity(
-        (authResult as any).user.id,
-        (authResult as any).user.name,
+        (authResult as AuthUser).id,
+        (authResult as AuthUser).name,
         "user_deactivated",
         "user",
         targetUserId,
