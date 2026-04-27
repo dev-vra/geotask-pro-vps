@@ -91,15 +91,10 @@ export const getPermissions = (user?: User | null): AppPermissions => {
   const roleName = user.role.name;
   const rawPerms: any = user.role.permissions || {};
 
-  // If the rawPerms has the new structure with `pages`, use it directly
-  if (rawPerms && typeof rawPerms === "object" && "pages" in rawPerms) {
-    return {
-      pages: { ...defaultPerms.pages, ...(rawPerms.pages || {}) },
-      tasks: { ...defaultPerms.tasks, ...(rawPerms.tasks || {}) },
-      settings: { ...defaultPerms.settings, ...(rawPerms.settings || {}) },
-      reurb: { ...defaultPerms.reurb, ...(rawPerms.reurb || {}) },
-    };
-  }
+  // If the rawPerms has the new structure with `pages`, use it as base.
+  // Fall through to role-name logic anyway so new modules (e.g. reurb) that
+  // aren't stored in legacy DB permissions still get computed correctly.
+  const hasDbStructure = rawPerms && typeof rawPerms === "object" && "pages" in rawPerms;
 
   // Fallback to hardcoded role-name logic (migration/legacy mode)
   const isAdmin = roleName === "Admin";
@@ -112,7 +107,12 @@ export const getPermissions = (user?: User | null): AppPermissions => {
   const isLiderado = roleName === "Liderado";
   const isGM = roleName === "GM";
 
-  const p = { ...defaultPerms };
+  const p: AppPermissions = {
+    pages: { ...defaultPerms.pages, ...(hasDbStructure ? (rawPerms.pages || {}) : {}) },
+    tasks: { ...defaultPerms.tasks, ...(hasDbStructure ? (rawPerms.tasks || {}) : {}) },
+    settings: { ...defaultPerms.settings, ...(hasDbStructure ? (rawPerms.settings || {}) : {}) },
+    reurb: { ...defaultPerms.reurb, ...(hasDbStructure ? (rawPerms.reurb || {}) : {}) },
+  };
 
   // Pages
   p.pages.kanban = true;
