@@ -7,7 +7,7 @@
 
 services:
   app:
-    image: ${APP_IMAGE:-ghcr.io/YOUR_ORG/geotask-pro:main}
+    image: ${APP_IMAGE:-ghcr.io/projetosgeogis/geotask:main}
     container_name: geotask-app
     restart: unless-stopped
     env_file: .env
