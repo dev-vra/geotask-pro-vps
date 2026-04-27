@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, type AuthUser } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 const clients = new Set<ReadableStreamDefaultController>();
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const authResult = await requireAuth(req);
     if (authResult instanceof NextResponse) return authResult;
 
-    const userId = (authResult as any).user.id;
+    const userId = (authResult as AuthUser).id;
     const currentConns = userConnections.get(userId) || 0;
 
     if (currentConns >= 2) {
